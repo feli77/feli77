@@ -1,0 +1,191 @@
+name: Update Profile Metrics
+
+on:
+  schedule:
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Generate SVG cards
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USERNAME: feli77
+        run: |
+          mkdir -p assets
+
+          python <<'PY'
+          import os
+          import datetime as dt
+          import requests
+          import html
+
+          TOKEN = os.environ["GH_TOKEN"]
+          USERNAME = os.environ["USERNAME"]
+          API = "https://api.github.com/graphql"
+          HEADERS = {
+              "Authorization": f"bearer {TOKEN}",
+              "Content-Type": "application/json",
+          }
+
+          def gql(query, variables=None):
+              r = requests.post(
+                  API,
+                  json={"query": query, "variables": variables or {}},
+                  headers=HEADERS,
+                  timeout=30,
+              )
+              r.raise_for_status()
+              data = r.json()
+              if "errors" in data:
+                  raise RuntimeError(data["errors"])
+              return data["data"]
+
+          # 取用户创建时间
+          user_query = """
+          query($login: String!) {
+            user(login: $login) {
+              createdAt
+            }
+          }
+          """
+          created_at = gql(user_query, {"login": USERNAME})["user"]["createdAt"]
+          start_year = dt.date.fromisoformat(created_at[:10]).year
+          today = dt.date.today()
+
+          contrib_query = """
+          query($login: String!, $from: DateTime!, $to: DateTime!) {
+            user(login: $login) {
+              contributionsCollection(from: $from, to: $to) {
+                totalCommitContributions
+                contributionCalendar {
+                  weeks {
+                    contributionDays {
+                      date
+                      contributionCount
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          total_commits = 0
+          day_counts = {}
+
+          for year in range(start_year, today.year + 1):
+              from_dt = dt.datetime(year, 1, 1, 0, 0, 0).isoformat() + "Z"
+
+              if year == today.year:
+                  to_dt = dt.datetime.combine(today, dt.time(23, 59, 59)).isoformat() + "Z"
+              else:
+                  to_dt = dt.datetime(year, 12, 31, 23, 59, 59).isoformat() + "Z"
+
+              data = gql(
+                  contrib_query,
+                  {
+                      "login": USERNAME,
+                      "from": from_dt,
+                      "to": to_dt,
+                  },
+              )["user"]["contributionsCollection"]
+
+              total_commits += data.get("totalCommitContributions", 0) or 0
+
+              for week in data["contributionCalendar"]["weeks"]:
+                  for day in week["contributionDays"]:
+                      day_counts[day["date"]] = day["contributionCount"]
+
+          # 计算 current streak
+          active_dates = sorted(
+              dt.date.fromisoformat(d)
+              for d, count in day_counts.items()
+              if count and count > 0
+          )
+
+          current_streak = 0
+          if active_dates:
+              last_active = active_dates[-1]
+              # 如果最后一次活跃距离今天超过 1 天，则 streak 视为中断
+              if (today - last_active).days <= 1:
+                  active_set = set(active_dates)
+                  cursor = last_active
+                  while cursor in active_set:
+                      current_streak += 1
+                      cursor -= dt.timedelta(days=1)
+
+          def render_card(title, value, suffix):
+              title = html.escape(title)
+              value = html.escape(str(value))
+              suffix = html.escape(suffix)
+
+              return f'''<svg xmlns="http://www.w3.org/2000/svg" width="340" height="110" viewBox="0 0 340 110" role="img" aria-label="{title}: {value} {suffix}">
+            <style>
+              .label {{
+                fill: #57606a;
+                font: 700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+                letter-spacing: 0.14em;
+              }}
+              .value {{
+                fill: #24292f;
+                font: 700 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+              }}
+              .sub {{
+                fill: #57606a;
+                font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+              }}
+              .accent {{
+                fill: #0969da;
+                opacity: 0.95;
+              }}
+              @media (prefers-color-scheme: dark) {{
+                .label, .sub {{
+                  fill: #8b949e;
+                }}
+                .value {{
+                  fill: #c9d1d9;
+                }}
+                .accent {{
+                  fill: #58a6ff;
+                }}
+              }}
+            </style>
+
+            <rect class="accent" x="0" y="18" width="4" height="74" rx="2" />
+            <text class="label" x="18" y="28">{title}</text>
+            <text class="value" x="18" y="70">{value}</text>
+            <text class="sub" x="18" y="92">{suffix}</text>
+          </svg>'''
+
+          with open("assets/total-commits.svg", "w", encoding="utf-8") as f:
+              f.write(render_card("TOTAL COMMITS", f"{total_commits:,}", "all time"))
+
+          with open("assets/current-streak.svg", "w", encoding="utf-8") as f:
+              f.write(render_card("CURRENT STREAK", current_streak, "days"))
+          PY
+
+      - name: Commit generated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/*.svg
+          git diff --cached --quiet || git commit -m "chore: update profile metrics"
+          git push
