@@ -1,4 +1,6 @@
-![signature](https://github.com/feli77/feli77/blob/main/signature.svg)
+<p align="center">
+  <img src="./signature.svg" alt="Felix Li" />
+</p>
 
 <p align="center">
   <a href="https://github.com/feli77">
