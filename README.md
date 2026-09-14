@@ -7,17 +7,17 @@
     <img
       src="./assets/total-commits.svg"
       alt="Total Commits"
-      height="110"
+      height="100"
     />
   </a>
 
-  <br><br>
+  <br>
 
   <a href="https://github.com/feli77">
     <img
       src="./assets/current-streak.svg"
       alt="Current Streak"
-      height="110"
+      height="100"
     />
   </a>
 </div>
