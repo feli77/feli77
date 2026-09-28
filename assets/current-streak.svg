@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="340" height="110" viewBox="0 0 340 110" role="img" aria-label="CURRENT STREAK: 1 days">
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="110" viewBox="0 0 340 110" role="img" aria-label="CURRENT STREAK: 2 days">
   <style>
     .label {
       fill: #57606a;
@@ -32,6 +32,6 @@
 
   <rect class="accent" x="0" y="18" width="4" height="74" rx="2" />
   <text class="label" x="18" y="28">CURRENT STREAK</text>
-  <text class="value" x="18" y="70">1</text>
+  <text class="value" x="18" y="70">2</text>
   <text class="sub" x="18" y="92">days</text>
 </svg>
